@@ -1,0 +1,15 @@
+[Unit]
+Description=The WebSocket Server
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sysconfig/httpd
+ExecStart=/usr/bin/php -f /var/www/cb/wsserver.php start
+ExecReload=/usr/bin/php -f /var/www/cb/wsserver.php reload
+ExecStop=/usr/bin/php -f /var/www/cb/wsserver.php stop
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
