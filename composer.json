@@ -1,0 +1,25 @@
+{
+"name": "cloudcoin/cloudservice",
+	"description": "CloudService Escrow",
+	"keywords": ["cloudcoin", "cloudservice", "escrow"],
+	"license": "MIT",
+	"type": "project",
+	"authors":      [
+	        {
+        	    "name":      "Alexander Miroch",
+	            "email":     "alexander.miroch@gmail.com"
+	        }
+	],
+
+	"require": {
+       		"php": ">=5.4.0",
+		"workerman/workerman" : "^3.5"
+	},
+
+	"autoload": {
+		"psr-0": {
+			"CloudService\\": "./"
+		}
+	}
+
+}
