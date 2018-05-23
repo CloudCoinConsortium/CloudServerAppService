@@ -13,6 +13,7 @@ use CloudService\Words;
 use CloudService\Mboard;
 use CloudService\Core;
 use CloudService\cLogger;
+use CloudService\Dispatcher;
 use Workerman\Events\EventInterface;
 
 mSystem::init(__DIR__ );
@@ -27,28 +28,29 @@ function fff($d) {
 
 $dispatcherPid = pcntl_fork();
 if ($dispatcherPid > 0) {
-	Core::getInstance()->initDispatcher();
-	Core::getInstance()->runLoop();
+	$dispatcher = new Dispatcher();
+	$dispatcher->run();
 	exit(1);
 }
 
 $wsWorker->onWorkerStart = function($worker) {
-	echo "OLALAA " . getmypid() . "\n";
+	echo "start " . getmypid() . "\n";
 	
 };
 
 $wsWorker->count = WORKERS_NUM;
 $wsWorker->onConnect = function($connection) {
-	Core::getInstance()->connect($connection);
+	$connection->wscore = new Core($connection);
 };
 
 $wsWorker->onMessage = function($connection, $data) {
 	echo "m=".getmypid()."\n";
-	Core::getInstance()->handleMessage($connection, $data);
+	$connection->wscore->handleMessage($data);
 };
 
 $wsWorker->onClose = function($connection) {
     echo "Connection closed\n";
+    $connection->wscore->disconnect();
 };
 
 echo "xx=".getmypid()."\n";

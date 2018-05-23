@@ -8,52 +8,75 @@ use Workerman\Worker;
 use CloudService\Words;
 use CloudService\Mboard;
 use CloudService\cLogger;
+use Workerman\Events\EventInterface;
 
 class Core {
-	var $socket;
-	var $childs;
-	var $masterPid;
+	var $connection;
+	var $dispatcherFd;
 
-	const PACKET_TYPE_INIT = 1;
-	const PACKET_TYPE_WORD = 2;
-	const PACKET_TYPE_COINS = 3;
-	const PACKET_TYPE_PROGRESS = 4;
-	const PACKET_TYPE_DONE = 5;
-	const PACKET_TYPE_GET_WORD = 50;
+	public function __construct($connection) {
+		$this->connection = $connection;
+		$this->connect();
+	}
 
-	public static function &getInstance() {
-                static $instance;
-
-                if (!is_object($instance)) {
-                        $instance = new Core();
-			$instance->words = [];
-                }
-
-                return $instance;
-        }
-
-
-	public function connect($connection) {
+	public function connect() {
 		$fd = @stream_socket_client('unix://' . DISPATCHER_SOCKET, $errno, $errstring);
 		if (!$fd) {
 			cLogger::error("Failed to connect to monitor: $errno, $errstring");
 			return false;
 		}
 
-		$connection->myFd = $fd;
+		cLogger::debug(getmypid() . " connected with $fd");
+		$this->dispatcherFd = $fd;
 
-		        return true;
+		echo getmypid() . ": adding fd $fd\n";
 
-		$eventLoop = $connection->worker->getEventLoop();
-//		$eventLoop->add($fd, EventInterface::EV_READ, "fff");
+		$eventLoop = $this->connection->worker->getEventLoop();
+		$eventLoop->add($this->dispatcherFd, EventInterface::EV_READ, [$this, "recvFromMonitor"]);
 
-	//	$word = Words::getWord();
-
-		
-	//	echo "Connect\n";
+		return true;
 	}
 
-	public function handleMessage($connection, $data) {
+	public function disconnect() {
+		@fclose($this->dispatcherFd);	
+	}
+
+	public function recvFromMonitor($socket) {
+		cLogger::debug("from monitor");
+		echo "FROM MONITOR\n";
+
+		$recv = stream_socket_recvfrom($socket, DATA_MAX, 0, $addr);
+		if (!$recv) {
+			cLogger::error("Failed to recv from monitor");
+			fclose($socket);
+			return false;
+		}
+
+		$packet = @json_decode($recv);
+                $jsonLastError = json_last_error();
+                if ($jsonLastError !== JSON_ERROR_NONE) {
+                        cLogger::error("RecvFrom. Failed to parse json for socket $socket: " . $jsonLastError);
+                        return false;
+                }
+
+		switch ($packet->type) {
+			case PACKET_TYPE_PING:
+				return;
+			
+		}
+
+		cLogger::debug(print_r($packet,true));
+
+
+
+
+	}
+
+	public function progressReport($progress) {
+		$this->sendReply(PACKET_TYPE_PROGRESS, $progress);
+	}
+
+	public function handleMessage($data) {
 		$packet = @json_decode($data);
 		$jsonLastError = json_last_error();
 		if ($jsonLastError !== JSON_ERROR_NONE) {
@@ -69,52 +92,73 @@ class Core {
 
 		$type = $packet->type;
 		switch ($type) {
-			case self::PACKET_TYPE_INIT:
+			case PACKET_TYPE_INIT:
 				$word = Words::getWord();
-				if (!$this->sendWordToMonitor($connection, $word)) {
-					$this->sendError($connection, "Write error");
+				if (!$this->sendWordToMonitor($word)) {
+					$this->sendError("Write error");
 					return false;
 				}
 				
-				$this->sendReply($connection, self::PACKET_TYPE_WORD, $word);
+				$this->sendReply(PACKET_TYPE_WORD, $word);
 				return true;
-			case self::PACKET_TYPE_COINS:
-				$stack = $packet->stack;
+	/*		case PACKET_TYPE_REQUEST_RECIPIENT:
 				$word = $packet->word;
 
 
 				echo "w=$word\n";
 //				$receiverSocket = $this->getWordSocket($word);
-				$receiverSocketInode = $this->getWordFromMonitor($connection, $word);
+				$receiverSocketInode = $this->getWordFromMonitor($word);
 				if ($receiverSocketInode === "N") {
-					$this->sendError($connection, "Invalid recipient");
+					$this->sendError("Invalid recipient");
 					return false;
 				}
-
-				/*if ($word == $this->word) {
-					$this->sendError($connection, "You can't send coins to yourself");
-					return false;
-				}
-				*/
-
-					
-			//	print_r($data);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 0);
-				sleep(1);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 15);
-				sleep(1);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 35);
-				sleep(1);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 50);
-				sleep(1);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 80);
-				sleep(1);
-				$this->sendReply($connection, self::PACKET_TYPE_PROGRESS, 100);
-				sleep(1);
 
 				
+				$rv = $this->requestRecipient($word);
+				if ($rv === false) {
+					$this->sendError("Failed to contact recipient");
+					return false;
 
-				$this->sendReply($connection, self::PACKET_TYPE_DONE, "");
+				}
+
+				$this->sendReply(PACKET_TYPE_OK, "");
+				return true;
+		*/
+			case PACKET_TYPE_COINS:
+				$stack = $packet->stack;
+				$word = $packet->word;
+
+				echo "COINS:Requesting recipient for word $word\n";
+				$rv = $this->requestRecipient($word);
+				if (!$rv) {
+					$this->sendError("Failed to contact recipient");
+					return false;
+				}
+
+				echo "rv=$rv\n";
+
+				$raida = new RAIDA();
+				$rv = $raida->pownStack($stack, [$this, "progressReport"]);
+
+				echo "zzzzzzz=$rv\n";
+
+/*
+				$this->sendReply(PACKET_TYPE_PROGRESS, 0);
+				sleep(1);
+				$this->sendReply(PACKET_TYPE_PROGRESS, 15);
+				sleep(1);
+				$this->sendReply(PACKET_TYPE_PROGRESS, 35);
+				sleep(1);
+				$this->sendReply(PACKET_TYPE_PROGRESS, 50);
+				sleep(1);
+				$this->sendReply(PACKET_TYPE_PROGRESS, 80);
+				sleep(1);
+				$this->sendReply(PACKET_TYPE_PROGRESS, 100);
+				sleep(1);
+
+*/				
+
+				$this->sendReply(PACKET_TYPE_DONE, "");
 
 
 
@@ -128,18 +172,41 @@ class Core {
 		print_r($packet);
 	}
 
-	public function getWordFromMonitor($connection, $word) {
+	public function requestRecipient($word) {
 		$data = @json_encode([
-			"type" => self::PACKET_TYPE_GET_WORD,
+			"type" => PACKET_TYPE_REQUEST_RECIPIENT,
 			"data" => $word
 		]);
 
-		if (!fwrite($connection->myFd, $data)) {
+		echo "sendting request to dispatcher: " .$this->dispatcherFd;
+		if (!fwrite($this->dispatcherFd, $data)) {
+			cLogger::error("Failed to send data to monitor");
+			return false;
+		}
+
+		$rv = fread($this->dispatcherFd, 1);
+		if (!$rv || $rv == REPLY_NOTOK) {
+			cLogger::error("Failed to ping recipient");
+			return false;
+		}
+
+		echo "pinged ok\n";
+
+		return true;
+	}
+
+	public function getWordFromMonitor($word) {
+		$data = @json_encode([
+			"type" => PACKET_TYPE_GET_WORD,
+			"data" => $word
+		]);
+
+		if (!fwrite($this->dispatcherFd, $data)) {
 			cLogger::error("Failed to send data to monitor");
 			return false;
 		}
 		
-		$data = fread($connection->myFd, 4096);
+		$data = fread($this->dispatcherFd, 4096);
 		if (!$data) {
 			cLogger::error("Failed to get data from monitor");
 			return false;
@@ -149,13 +216,15 @@ class Core {
 	}
 
 
-	public function sendWordToMonitor($connection, $word) {
+	public function sendWordToMonitor($word) {
 		$data = @json_encode([
-			"type" => self::PACKET_TYPE_WORD,
+			"type" => PACKET_TYPE_WORD,
 			"data" => $word
 		]);
 
-		if (!fwrite($connection->myFd, $data)) {
+		echo "Sedning word $word to monitor FD:".$this->dispatcherFd."\n";
+
+		if (!fwrite($this->dispatcherFd, $data)) {
 			cLogger::error("Failed to send data to monitor");
 			return false;
 		}
@@ -163,7 +232,7 @@ class Core {
 		return true;
 	}
 
-	public function sendReply($connection, $type, $data) {
+	public function sendReply($type, $data) {
 		$data = @json_encode([
 			"result" => "success",
 			"type" => $type,
@@ -172,171 +241,16 @@ class Core {
 
 		print_r($data);
 
-		$connection->send($data);
+		$this->connection->send($data);
 	}
 
-	public function sendError($connection, $msg) {
+	public function sendError($msg) {
 		$data = @json_encode([
 			"result" => "error",
 			"message" => $msg
 		]);
 
-		$connection->send($data);
+		$this->connection->send($data);
 	}
-
-	public function fatalError($error) {
-		cLogger::error($error);
-
-		$masterPid = $this->getMasterPid();
-		if ($masterPid)
-			posix_kill($masterPid, SIGTERM);
-		exit(1);
-	}
-
-	public function getMasterPid() {
-		$backtrace        = debug_backtrace();
-		$startFile = $backtrace[count($backtrace) - 1]['file'];
-
-	        $unique_prefix = str_replace('/', '_', $startFile);
-
-            	$pidFile = __DIR__ . "/vendor/workerman/$unique_prefix.pid";
-
-		return @file_get_contents($pidFile);
-	}
-
-	public function initDispatcher() {
-		@unlink(DISPATCHER_SOCKET);
-		$this->socket = stream_socket_server('unix://' . DISPATCHER_SOCKET, $errno, $errstring);
-		if (!$this->socket) 
-			$this->fatalError("Failed to created server socket");
-
-		$this->ev = new \Workerman\Events\Select();
-
-		$this->ev->add($this->socket, \Workerman\Events\EventInterface::EV_READ, [$this, "readEvent"]);
-
-		return;		
-
-		cLogger::debug("go2");
-		$accepted = 0;
-		while ($conn = @stream_socket_accept($this->socket)) {
-			cLogger::debug("Connected " . $accepted);
-
-			//stream_set_blocking($conn, true);
-			$this->ev->add($conn, \Workerman\Events\EventInterface::EV_READ, [$this, "readEvent"]);
-
-		//	$accepted++;
-		//	if ($accepted == WORKERS_NUM)
-		//		break;
-
-	//		fwrite($conn, 'The local time is ' . date('n/j/Y g:i a') . "\n");
-	//		fclose($conn);
-		}
-
-		cLogger::debug("Started");
-	}
-
-	public function readEvent($socket) {
-		echo "EVENT\n";
-//		$recv = fread($socket, 100);
-
-		if ($socket == $this->socket) {
-			$conn = @stream_socket_accept($this->socket);
-			cLogger::debug("Connected");
-
-                        stream_set_blocking($conn, true);
-                        $this->ev->add($conn, \Workerman\Events\EventInterface::EV_READ, [$this, "readEvent"]);
-
-			return true;
-		}
-
-
-		$recv = stream_socket_recvfrom($socket, DATA_MAX, 0, $addr);
-		if ($recv === "") {
-			fclose($socket);
-			return true;
-		}
-
-		$packet = @json_decode($recv);
-		$jsonLastError = json_last_error();
-		if ($jsonLastError !== JSON_ERROR_NONE) {
-			cLogger::error("Failed to parse json: " . $jsonLastError);
-			return false;
-		}
-
-		switch ($packet->type) {
-			case self::PACKET_TYPE_WORD:
-				$word = $packet->data;
-				$this->setWord($word, $socket);
-				return true;
-			case self::PACKET_TYPE_GET_WORD:
-				$word = $packet->data;
-				$rSocket = $this->getWordSocket($word);
-				echo "zzzzzzz will write\n";
-
-				if (!$rSocket) {
-					stream_socket_sendto($socket, "N");
-				} else {
-					$rSocket = fstat($rSocket);
-					stream_socket_sendto($socket, $rSocket['ino']);
-				}
-
-				return true;
-			
-			default:
-				cLogger::error("Invalid packet to monitor: " . $packet->type);
-				return false;
-		}
-
-		print_r($packet);
-
-#		$recv = stream_socket_recvfrom($socket, 65535, 0, $remote_address);
-
-		cLogger::debug("Event sssss rr=" . $recv . " s=".print_r($socket,true));
-
-		return true;
-	}
-	
-	public function getWordSocket($word) {
-		echo "GET NOW $word\n";
-		print_r($this->words);
-		if (!isset($this->words[$word]))
-			return false;
-		
-		$word = $this->words[$word];
-
-		$now = time();
-		if ($now - $word['time'] > WORD_LIFETIME) {
-			unset($this->words[$word]);
-			return false;
-		}
-
-		return $word['socket'];
-	}
-
-	public function setWord($word, $socket) {
-
-		foreach ($this->words as $_word => $item) {
-			if ($item['socket'] == $socket) {
-				unset($this->words[$_word]);
-			}
-		}
-
-		$this->words[$word] = [
-			"socket" => $socket,
-			"time" => time()
-		];
-
-		echo "SET NOW\n";
-		print_r($this->words);
-	}
-
-	public function runLoop() {
-
-		$this->ev->loop();
-
-		$this->fatalError("Finished");
-	}
-
-
 }
 

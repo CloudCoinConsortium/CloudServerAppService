@@ -5,8 +5,9 @@ namespace CloudService;
 
 require "clogger.php";
 require "words.php";
-require "mboard.php";
+require "dispatcher.php";
 require "core.php";
+require "raida/RAIDA.php";
 
 class mSystem {
 
@@ -59,3 +60,4 @@ class mSystem {
 	}
 
 }
+?>
