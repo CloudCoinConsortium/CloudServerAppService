@@ -27,7 +27,7 @@ class mSystem {
 
 		cLogger::init();
 		Words::init();
-		mBoard::init();
+
 	}
 
 	static function installSignals() {

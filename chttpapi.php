@@ -21,8 +21,8 @@ class cHTTPAPI {
 		$ch = curl_init();
 
 		if (!is_array($request)) {
-			$header[] = "Content-type: " . $this->contentType;
-			$header[] = "Content-length: " . strlen($request);
+			$header[] = "Content-Type: " . $this->contentType;
+			$header[] = "Content-Length: " . strlen($request);
 			curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
 		}
 	
@@ -42,6 +42,7 @@ class cHTTPAPI {
 		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
 		curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
+	//	curl_setopt($ch, CURLOPT_VERBOSE, 1);
 
 		cLogger::debug("Connecting to " . $url);
 		$response = curl_exec($ch);

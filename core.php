@@ -29,8 +29,6 @@ class Core {
 		cLogger::debug(getmypid() . " connected with $fd");
 		$this->dispatcherFd = $fd;
 
-		echo getmypid() . ": adding fd $fd\n";
-
 		$eventLoop = $this->connection->worker->getEventLoop();
 		$eventLoop->add($this->dispatcherFd, EventInterface::EV_READ, [$this, "recvFromMonitor"]);
 
@@ -43,7 +41,6 @@ class Core {
 
 	public function recvFromMonitor($socket) {
 		cLogger::debug("from monitor");
-		echo "FROM MONITOR\n";
 
 		$recv = stream_socket_recvfrom($socket, DATA_MAX, 0, $addr);
 		if (!$recv) {
@@ -52,20 +49,38 @@ class Core {
 			return false;
 		}
 
-		$packet = @json_decode($recv);
-                $jsonLastError = json_last_error();
-                if ($jsonLastError !== JSON_ERROR_NONE) {
-                        cLogger::error("RecvFrom. Failed to parse json for socket $socket: " . $jsonLastError);
-                        return false;
-                }
+		cLogger::debug(print_r($recv,true));
+		$packets = preg_split("/}{/", $recv);
 
-		switch ($packet->type) {
-			case PACKET_TYPE_PING:
-				return;
-			
+		$i = 0;
+		foreach ($packets as $packet) {
+			if (!($i % 2))
+				$packet .= "}";
+			else
+				$packet = "{" . $packet;
+
+			$packet = @json_decode($packet);
+        	        $jsonLastError = json_last_error();
+                	if ($jsonLastError !== JSON_ERROR_NONE) {
+	                        cLogger::error("RecvFrom. Failed to parse json $packet for socket $socket: " . $jsonLastError);
+        	                return false;
+                	}
+
+			switch ($packet->type) {
+				case PACKET_TYPE_PING:
+					if ($packet->hash) {
+						$hash = $packet->hash;
+						cLogger::debug("received hash $hash");
+
+						$this->sendReply(PACKET_TYPE_HASH, $hash);
+					}
+					break;
+			}
+
+			$i++;	
+	
 		}
 
-		cLogger::debug(print_r($packet,true));
 
 
 
@@ -101,65 +116,26 @@ class Core {
 				
 				$this->sendReply(PACKET_TYPE_WORD, $word);
 				return true;
-	/*		case PACKET_TYPE_REQUEST_RECIPIENT:
-				$word = $packet->word;
-
-
-				echo "w=$word\n";
-//				$receiverSocket = $this->getWordSocket($word);
-				$receiverSocketInode = $this->getWordFromMonitor($word);
-				if ($receiverSocketInode === "N") {
-					$this->sendError("Invalid recipient");
-					return false;
-				}
-
-				
-				$rv = $this->requestRecipient($word);
-				if ($rv === false) {
-					$this->sendError("Failed to contact recipient");
-					return false;
-
-				}
-
-				$this->sendReply(PACKET_TYPE_OK, "");
-				return true;
-		*/
 			case PACKET_TYPE_COINS:
 				$stack = $packet->stack;
 				$word = $packet->word;
 
-				echo "COINS:Requesting recipient for word $word\n";
 				$rv = $this->requestRecipient($word);
 				if (!$rv) {
 					$this->sendError("Failed to contact recipient");
 					return false;
 				}
 
-				echo "rv=$rv\n";
-
 				$raida = new RAIDA();
 				$rv = $raida->pownStack($stack, [$this, "progressReport"]);
+				if ($rv === false) {
+					$this->sendError($raida->error);
+					return false;
+				}
 
-				echo "zzzzzzz=$rv\n";
-
-/*
-				$this->sendReply(PACKET_TYPE_PROGRESS, 0);
-				sleep(1);
-				$this->sendReply(PACKET_TYPE_PROGRESS, 15);
-				sleep(1);
-				$this->sendReply(PACKET_TYPE_PROGRESS, 35);
-				sleep(1);
-				$this->sendReply(PACKET_TYPE_PROGRESS, 50);
-				sleep(1);
-				$this->sendReply(PACKET_TYPE_PROGRESS, 80);
-				sleep(1);
-				$this->sendReply(PACKET_TYPE_PROGRESS, 100);
-				sleep(1);
-
-*/				
+				$this->sendToRecipient($word, $rv);
 
 				$this->sendReply(PACKET_TYPE_DONE, "");
-
 
 
 				return true;
@@ -172,13 +148,13 @@ class Core {
 		print_r($packet);
 	}
 
-	public function requestRecipient($word) {
+	public function sendToRecipient($word, $hash) {
 		$data = @json_encode([
 			"type" => PACKET_TYPE_REQUEST_RECIPIENT,
-			"data" => $word
+			"data" => $word,
+			"hash" => $hash
 		]);
 
-		echo "sendting request to dispatcher: " .$this->dispatcherFd;
 		if (!fwrite($this->dispatcherFd, $data)) {
 			cLogger::error("Failed to send data to monitor");
 			return false;
@@ -190,7 +166,25 @@ class Core {
 			return false;
 		}
 
-		echo "pinged ok\n";
+		return true;
+	}
+
+	public function requestRecipient($word) {
+		$data = @json_encode([
+			"type" => PACKET_TYPE_REQUEST_RECIPIENT,
+			"data" => $word
+		]);
+
+		if (!fwrite($this->dispatcherFd, $data)) {
+			cLogger::error("Failed to send data to monitor");
+			return false;
+		}
+
+		$rv = fread($this->dispatcherFd, 1);
+		if (!$rv || $rv == REPLY_NOTOK) {
+			cLogger::error("Failed to ping recipient");
+			return false;
+		}
 
 		return true;
 	}
@@ -222,8 +216,6 @@ class Core {
 			"data" => $word
 		]);
 
-		echo "Sedning word $word to monitor FD:".$this->dispatcherFd."\n";
-
 		if (!fwrite($this->dispatcherFd, $data)) {
 			cLogger::error("Failed to send data to monitor");
 			return false;
@@ -238,8 +230,6 @@ class Core {
 			"type" => $type,
 			"data" => $data
 		]);
-
-		print_r($data);
 
 		$this->connection->send($data);
 	}

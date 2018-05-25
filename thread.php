@@ -90,11 +90,12 @@ class Future {
 	var $callback;
 	var $executor;
 
-	function __construct($taskId, $command, $callback, $executor) {
+	function __construct($taskId, $command, $callback, $executor, $private) {
 		$this->taskId = $taskId;
 		$this->command = $command;
 		$this->callback = $callback;
 		$this->executor = $executor;
+		$this->private = $private;
 	}
 	
 	function startup($timeout) {
@@ -106,7 +107,7 @@ class Future {
 		$this->result = $result;
 		$this->error = $error;
 		$this->finished = true;
-		call_user_func($this->callback, $this->result, $this->error);
+		call_user_func($this->callback, $this->result, $this->error, $this->private);
 	}
 }
 //Wrapper for Thread class
@@ -125,8 +126,8 @@ class ThreadPool{
 		$this->defaultTimeout = $timeout;
 	}
 	
-	function scheduleCommand($executor, $command, $callback) {
-		$future = new Future(""+$this->index++, $command, $callback, $executor);
+	function scheduleCommand($executor, $command, $callback, $private = false) {
+		$future = new Future(""+$this->index++, $command, $callback, $executor, $private);
 		$this->futures[$future->taskId] = $future;
 		$this->output[$future->taskId] = "";
 		$this->error[$future->taskId] = "";
@@ -140,7 +141,7 @@ class ThreadPool{
 	function scheduleNow($future) {
 		$future->startup($this->defaultTimeout);
 		$this->pipes[$future->taskId] = $future->thread->pipes[1];
-		echo 'thread '.$future->taskId." started, command:".$future->command."\n";
+	//	echo 'thread '.$future->taskId." started, command:".$future->command."\n";
 	}
 	
 	function loop(){
@@ -170,7 +171,7 @@ class ThreadPool{
 						unset($this->pipes[$id]);
 						$this->futures[$id]->end($this->output[$id], "");
 						unset($this->output[$id]);
-						echo "thread $id timeout, duration ".$this->futures[$id]->thread->getDurationSeconds()."s, command:".$this->futures[$id]->command."\n";
+	//					echo "thread $id timeout, duration ".$this->futures[$id]->thread->getDurationSeconds()."s, command:".$this->futures[$id]->command."\n";
 					}
 				} else {
 					$this->output[$id] .= $thread->listen();
@@ -180,7 +181,7 @@ class ThreadPool{
 					$this->futures[$id]->end($this->output[$id], $this->error[$id]);
 					unset($this->output[$id]);
 					unset($this->error[$id]);
-					echo "thread $id completed, duration ".$this->futures[$id]->thread->getDurationSeconds()."s, command:".$this->futures[$id]->command."\n";
+					//echo "thread $id completed, duration ".$this->futures[$id]->thread->getDurationSeconds()."s, command:".$this->futures[$id]->command."\n";
 				}
 				
 			}
@@ -203,7 +204,7 @@ class TaskExecutor {
 	}
 	
 	public function executeAsync($task, $private) {
-		$this->threadPool->scheduleCommand($this, $task, $this->callback);
+		$this->threadPool->scheduleCommand($this, $task, $this->callback, $private);
 	}
 	
 	public function executeWaitTerminal($task) {

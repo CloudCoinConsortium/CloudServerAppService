@@ -46,7 +46,6 @@ class Dispatcher {
 
                 $recv = stream_socket_recvfrom($socket, DATA_MAX, 0, $addr);
                 if ($recv === "") {
-			echo "closing socket $socket\n";
                         $u = false;
                         foreach ($this->words as $w => $item) {
                                 if ($item['socket'] == $socket) {
@@ -56,7 +55,6 @@ class Dispatcher {
                         }
 
                         if ($u) {
-				echo "unset $w\n";
                                 unset($this->words[$w]);
 			}
 
@@ -74,7 +72,6 @@ class Dispatcher {
 		switch ($packet->type) {
 			case PACKET_TYPE_WORD:
                                 $word = $packet->data;
-				echo "DISP: will set word $word for $socket\n";
                                 $this->setWordSocket($word, $socket);
                                 break;
                         case PACKET_TYPE_GET_WORD:
@@ -91,18 +88,23 @@ class Dispatcher {
                                 break;
                         case PACKET_TYPE_REQUEST_RECIPIENT:
 				$word = $packet->data;
+
+				print_r($packet);
+
+				$hash = false;
+				if (isset($packet->hash))
+					$hash = $packet->hash;
+
 				$rSocket = $this->getWordSocket($word);
 				if (!$rSocket) {
 					stream_socket_sendto($socket, REPLY_NOTOK);
 				} else {
-					echo getmypid() . ": sending fd $rSocket our socket $socket [$word]\n";
-					if ($this->pingNode($rSocket)) {
+					if ($this->pingNode($rSocket, $hash)) {
 						stream_socket_sendto($socket, REPLY_OK);
 					} else {
 						stream_socket_sendto($socket, REPLY_NOTOK);
 
 					}
-					echo "ok\n";
                                 }
 				break;
 			default:
@@ -116,14 +118,14 @@ class Dispatcher {
 		return true;
 	}
 
-	public function pingNode($rSocket) {
+	public function pingNode($rSocket, $hash) {
 		$data = [
-			"type" => PACKET_TYPE_PING
+			"type" => PACKET_TYPE_PING,
+			"hash" => $hash
 		];
 
 		$data = @json_encode($data);
 
-		echo "pinging\n";
 		// Mere check if we can write. Response doesn't matter
 		if (!stream_socket_sendto($rSocket, $data)) {
 			cLogger::error("socket $rSocket can't ping");
@@ -134,7 +136,6 @@ class Dispatcher {
 	}
 
 	public function getWordSocket($word) {
-		echo "GET NOW $word\n";
 		print_r($this->words);
 		if (!isset($this->words[$word]))
 			return false;

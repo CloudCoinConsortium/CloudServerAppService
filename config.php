@@ -4,7 +4,7 @@
 define('WS_PORT', 2347);
 
 
-define('LOG_FILENAME', 'log.txt');
+define('LOG_FILENAME', __DIR__ . '/log.txt');
 
 define('WORDS_FILENAME', 'words5.txt');
 
@@ -26,6 +26,7 @@ define('PACKET_TYPE_PROGRESS', 4);
 define('PACKET_TYPE_DONE', 5);
 define('PACKET_TYPE_REQUEST_RECIPIENT', 6);
 define('PACKET_TYPE_OK', 7);
+define('PACKET_TYPE_HASH', 8);
 define('PACKET_TYPE_RECIPIENT_REPLY', 50);
 
 define('PACKET_TYPE_GET_WORD', 51);
@@ -48,4 +49,15 @@ define('SOCKET_TIMEOUT', 10);
 define('JSON_CONTENT_TYPE', 'application/json');
 
 define('MAX_FAILED_RAIDAS', 3);
+
+define('COIN_STORAGE_DIR', 'storage');
+
+
+define('RAIDA_COIN_RESULT_COUNTERFEIT', 'fail');
+define('RAIDA_COIN_RESULT_VALID', 'pass');
+
+define('MAX_FAILED', 5);
+
+define('MAX_FILE_TIME', 600);
+
 ?>

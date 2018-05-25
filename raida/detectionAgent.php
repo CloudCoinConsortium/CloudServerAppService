@@ -2,7 +2,7 @@
 
 namespace CloudService;
 
-require "chttpapi.php";
+require __DIR__ . "/../chttpapi.php";
 
 use CloudService\cLogger;
 use CloudService\cHTTPAPI;
@@ -19,29 +19,35 @@ class DetectionAgent extends cHTTPAPI {
 		$this->status = RAIDA_STATUS_NOTREADY;
 		$this->raw = $raw;
 
-                parent::__construct($this->url, JSON_CONTENT_TYPE);
+                parent::__construct($this->url, "application/x-www-form-urlencoded");
 	}
 
 	private function buildRequest() {
 		if ($this->data)
-			return json_encode($this->data);
+			return $this->data;
 
 		return null;
         }
+
+	public function setData($data) {
+		$this->data = $data;
+	}
 
 	public function getStatus() {
 		return $this->status;
 	}
 
         public function _doRequest($method, $params = []) {
-                $url = $this->url . "$method?";
+                $url = $this->url . "$method";
 
                 $nparams = [];
                 foreach ($params as $k => $v)
                         $nparams[] = "$k=$v";
 
-                $url .= join("&", $nparams);
+		if (count($nparams) > 0)
+			$url .= "?";
 
+                $url .= join("&", $nparams);
                 $request = $this->buildRequest();
                 $rv = $this->doRequestCommonURL($request, $url);
                 if (!$rv) {

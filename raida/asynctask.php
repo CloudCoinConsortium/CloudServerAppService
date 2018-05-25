@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
-require 'config.php';
-require "msystem.php";
+require __DIR__ . '/../config.php';
+require __DIR__ . '/../msystem.php';
 
 use Workerman\Worker;
 use CloudService\mSystem;
@@ -26,10 +26,22 @@ array_shift($argv);
 $url = array_shift($argv);
 $idx = array_shift($argv);
 $cmd = array_shift($argv);
+
+$postData = false;
+if (count($argv) > 0) {
+	$postFile = array_shift($argv);
+	$postData = @file_get_contents($postFile);
+	if (!$postData)
+		die('Cant get postdata');
+} 
+
 $arg = $argv;
 
 
 
+
 $r = new DetectionAgent($idx, $url, true);
+if ($postData)
+	$r->setData($postData);
 echo $r->$cmd($arg) ;
 ?>
