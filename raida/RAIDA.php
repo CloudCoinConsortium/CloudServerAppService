@@ -385,8 +385,8 @@ class RAIDA {
 				return null;
 			}
 
-			if (in_array($private, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]))
-				$coin->status = RAIDA_COIN_RESULT_VALID;
+		//	if (in_array($private, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]))
+		//		$coin->status = RAIDA_COIN_RESULT_VALID;
 
 			if ($coin->status == RAIDA_COIN_RESULT_VALID) 
 				$this->coinsDB[$i]['statuses'][$private] = RAIDA_COIN_RESULT_VALID;
