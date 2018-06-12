@@ -126,7 +126,7 @@ class RAIDA {
 
 			$ed = date("m-Y");
 			$newcc = [
-				'ans' => $cpans,
+				'an' => $cpans,
 				'sn' => $cc->sn,
 				'nn' => $cc->nn,
 				'aoid' => $cc->aoid,
@@ -162,7 +162,7 @@ class RAIDA {
 			$denominations[] = "denomination[]=" . $coin['denomination'];
 
 			$allANs[] = $coin['origans'];
-			$allPANs[] = $coin['ans'];
+			$allPANs[] = $coin['an'];
 		}
 
 		$nns = join("&", $nns);
