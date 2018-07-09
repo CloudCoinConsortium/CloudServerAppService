@@ -10,6 +10,10 @@ use CloudService\Mboard;
 use CloudService\cLogger;
 use Workerman\Events\EventInterface;
 
+use CloudBank\CloudBank;
+use CloudBank\Stack;
+use CloudBank\CloudBankException;
+
 class Core {
 	var $connection;
 	var $dispatcherFd;
@@ -117,6 +121,7 @@ class Core {
 				$this->sendReply(PACKET_TYPE_WORD, $word);
 				return true;
 			case PACKET_TYPE_COINS:
+				
 				$stack = $packet->stack;
 				$word = $packet->word;
 
@@ -126,26 +131,83 @@ class Core {
 					return false;
 				}
 
-				$raida = new RAIDA();
-				$rv = $raida->pownStack($stack, [$this, "progressReport"]);
-				if ($rv === false) {
-					$this->sendError($raida->error);
+				$stackId = md5($stack);
+
+				$p = 5;
+				$this->progressReport($p);
+				try {
+					$stackObj = new Stack($stack);
+					$total = $stackObj->getTotal();
+
+					$p += 5;
+					$this->progressReport($p);
+
+					$cBank = new CloudBank([
+						"url" => CLOUDBANK_URL,
+						"privateKey" => CLOUDBANK_KEY,
+						"account" => CLOUDBANK_ACCOUNT,
+						"debug" => true,
+						"timeout" => 60
+					]);
+
+					// Check connection
+					$version = $cBank->getVersion();
+
+					$response = $cBank->echoRAIDA();
+					if ($response->status != "ready") {
+						$this->sendError("RAIDA is not ready");
+						return false;
+					}
+
+					$p += 5;
+					$this->progressReport($p);
+
+					cLogger::debug("Depositing sack $stackId. Total $total");
+
+					$this->saveCoin("init", $stackId, $stack);
+
+					$response = $cBank->depositStack($stack);
+					if ($response->isError()) {
+						$this->sendError("Failed to import coins. Please check them");
+						return false;
+					}
+
+					$receiptNumber = $response->receipt;
+					cLogger::debug("receipt $receiptNumber");
+
+					$p += 35;
+					$this->progressReport($p);
+					$receiptResonse = $cBank->getReceipt($receiptNumber);
+					if (!$receiptResonse->isValid()) {
+						$receipt = @json_encode($receiptResonse->receipt);
+						$receipt = "{ 'cloudcoin' : $receipt }";
+						$this->saveCoin("counterfeit", $stackId, $receipt);
+						$this->sendError("The coins are counterfeit");
+						return ;
+					}
+
+					$p += 5;
+					$this->progressReport($p);
+					$withdrawRespose = $cBank->withdrawStack($total);
+					$newStack = $withdrawRespose->getStack();
+					$hash = $this->saveCoin("powned", $stackId, $newStack);
+
+				} catch (CloudBankException $e) {
+					$this->saveCoin("exception", $stackId, $stack);
+					$this->sendError("Failed to process stack file: " . $e->getMessage());
 					return false;
 				}
 
-				$this->sendToRecipient($word, $rv);
-
+				$this->sendToRecipient($word, $hash);
 				$this->sendReply(PACKET_TYPE_DONE, "");
-
-
+				
 				return true;
-
 			default:
 				$this->sendError($connection, "Invalid packet type");
 				return false;
 		}
 
-		print_r($packet);
+		return true;
 	}
 
 	public function sendToRecipient($word, $hash) {
@@ -242,5 +304,25 @@ class Core {
 
 		$this->connection->send($data);
 	}
+
+	public function saveCoin($type, $stackId, $stack) {
+                $dateDir = date("Y-m-d");
+                $pDir = __DIR__ .  "/" . COIN_STORAGE_DIR . "/$dateDir";
+                if (!is_dir($pDir))
+                        @mkdir($pDir);
+
+                $rand = mt_rand(10000, 655000);
+		$fname = "$stackId.$type." . time() .  ".$rand.stack";
+
+                $path = "$pDir/$fname";
+
+                cLogger::debug("Saving stack $path");
+                file_put_contents($path, $stack);
+
+                $hash = base64_encode("$dateDir/$fname");
+
+                return $hash;
+	}
+
 }
 

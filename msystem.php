@@ -7,7 +7,6 @@ require "clogger.php";
 require "words.php";
 require "dispatcher.php";
 require "core.php";
-require "raida/RAIDA.php";
 
 class mSystem {
 

@@ -1,7 +1,7 @@
 <?php
 
 
-define('WS_PORT', 2347);
+define('WS_PORT', 2348);
 
 
 define('LOG_FILENAME', __DIR__ . '/log.txt');
@@ -59,5 +59,11 @@ define('RAIDA_COIN_RESULT_VALID', 'pass');
 define('MAX_FAILED', 5);
 
 define('MAX_FILE_TIME', 600);
+
+
+define('CLOUDBANK_URL', 'https://bank.cloudcoin.global/service');
+define('CLOUDBANK_ACCOUNT', 'trustedtransfer');
+define('CLOUDBANK_KEY', '90FDC006BDDF4473B619E132DA10A81B');
+
 
 ?>
