@@ -58,10 +58,12 @@ class Core {
 
 		$i = 0;
 		foreach ($packets as $packet) {
-			if (!($i % 2))
-				$packet .= "}";
-			else
-				$packet = "{" . $packet;
+			if (count($packets) != 1) {
+				if (!($i % 2))
+					$packet .= "}";
+				else
+					$packet = "{" . $packet;
+			}
 
 			$packet = @json_decode($packet);
         	        $jsonLastError = json_last_error();
@@ -124,6 +126,7 @@ class Core {
 				
 				$stack = $packet->stack;
 				$word = $packet->word;
+				$amount = $packet->amount;
 
 				$rv = $this->requestRecipient($word);
 				if (!$rv) {
@@ -138,6 +141,9 @@ class Core {
 				try {
 					$stackObj = new Stack($stack);
 					$total = $stackObj->getTotal();
+
+					if (!$amount)
+						$amount = $total;
 
 					$p += 5;
 					$this->progressReport($p);
@@ -162,11 +168,11 @@ class Core {
 					$p += 5;
 					$this->progressReport($p);
 
-					cLogger::debug("Depositing sack $stackId. Total $total");
+					cLogger::debug("Depositing sack $stackId. Total $total. Amount $amount");
 
 					$this->saveCoin("init", $stackId, $stack);
 
-					$response = $cBank->depositStack($stack);
+					$response = $cBank->depositStack($stack, $amount);
 					if ($response->isError()) {
 						$this->sendError("Failed to import coins. Please check them");
 						return false;
@@ -183,7 +189,7 @@ class Core {
 						$receipt = "{ 'cloudcoin' : $receipt }";
 						$this->saveCoin("counterfeit", $stackId, $receipt);
 						$this->sendError("The coins are counterfeit");
-						return ;
+						return false;
 					}
 
 					$p += 5;
@@ -192,6 +198,16 @@ class Core {
 					$newStack = $withdrawRespose->getStack();
 					$hash = $this->saveCoin("powned", $stackId, $newStack);
 
+					$senderHash = "";
+					if ($amount != $total) {
+						$changeStack = $response->change;
+						if (!$changeStack) {
+							$this->sendError("Failed to get change");
+							return false;
+						}
+
+						$senderHash = $this->saveCoin("change", $stackId, $changeStack);
+					}
 				} catch (CloudBankException $e) {
 					$this->saveCoin("exception", $stackId, $stack);
 					$this->sendError("Failed to process stack file: " . $e->getMessage());
@@ -199,7 +215,7 @@ class Core {
 				}
 
 				$this->sendToRecipient($word, $hash);
-				$this->sendReply(PACKET_TYPE_DONE, "");
+				$this->sendReply(PACKET_TYPE_DONE, $senderHash);
 				
 				return true;
 			default:
