@@ -57,7 +57,7 @@ Type of the packet could be one of the following:
 2 - WORD (from server to client). The reply from the server containing the word
 3 - COINS (from client to server). Client sends coins with this request. "stack" field should contain an escaped stack of coins. "word" field should contain a recipient's word.
 4 - PROGRESS (from server to client). Server sends the progress of powning. 
-5 - DONE (from server to client). Server sends this when powning is done. The response has no data.
+5 - DONE (from server to client). Server sends this when powning is done. The response might have a hash if the sender requested a change.
 8 - HASH (from server to client). Server sends a hash for a client where it can download powned coins
 </pre>
 
@@ -70,11 +70,13 @@ A typical workflow would look like this:
 
 3. Client listens for the servers packet in a loop
 
-4. If the client receives HASH packet it needs to decode it from base64. And download the coins from the following url <i>https://cloudserver.domain/cc.php?h=decoded_string</i>. The link has a secret random number and will be valid only for 10 minutes.
+4. If the client receives HASH packet he needs to download the coins from the following url <i>https://cloudserver.domain/cc.php?h=hash</i>. The link has a secret random number and will be valid only for 10 minutes.
 
 5. If the client wants to transfer coins to someone it needs to send COINS packet with the escaped JSON stack in the "data" field of the packet.
 
-6. After sending coins the client may receive PROGRESS packets reporting the progress of the pownign process. Finailly it will receive DONE packet or ERROR (if powning failed)
+6. After sending coins the client may receive PROGRESS packets reporting the progress of the pownign process. Finailly it will receive DONE packet with a hash or ERROR (if powning failed)
+
+7. The sender may use the hash in the previous step to download his change if he had sent not the whole stack to the recipient. The url for downloading is the same as in the step 4: <i>https://cloudserver.domain/cc.php?h=hash</i>
 
 
 
@@ -87,4 +89,12 @@ An example of COINS packet
 }
 </pre>
 
+An exapmle of the DONE packet
+<pre>
+{
+"result" => "success",
+"type" => 5,
+"data" => "MjAxOC0wNy0xMC9jZTE2NDA2NWU4YmFmMmMyNzY1ZDkzY2Y1MTk0YmQxOC5wb3duZWQuMTUzMTIzMTk0OS4zOTAyMDUuc3RhY2s="
+}
+</pre>
 
